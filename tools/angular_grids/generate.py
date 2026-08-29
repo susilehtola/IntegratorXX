@@ -69,9 +69,31 @@ def _run_design(family, npts, order, digits, root, verbose):
     return d.points, [d.weight] * d.n, designs.verify(d)
 
 
-def run(family, npts, digits, root, out, verbose=True):
-    mp.dps = digits + 20                      # guard digits for the refinement
+def run(family, npts, digits, root, out, verbose=True, guards=(20, 60, 140)):
+    """Refine and emit one grid, raising the working precision if it is short.
+
+    The guard is not a fixed margin because the conditioning varies enormously
+    with grid size: delley_1730's Jacobian has a condition number of 2.0e+24
+    even after column equilibration, which eats 24 of the working digits before
+    the step is computed, and the larger sizes are worse. Rather than predict
+    that, try a modest guard and retry with more when verification comes up
+    short.
+    """
     order = algebraic_order(family, npts, root)
+    last = None
+    for guard in guards:
+        mp.dps = digits + guard
+        try:
+            return _attempt(family, npts, order, digits, root, out, verbose, guard)
+        except SystemExit as e:
+            last = e
+            if verbose:
+                print(f"  {e}; retrying at {digits + guard * 3} working digits",
+                      flush=True)
+    raise SystemExit(last)
+
+
+def _attempt(family, npts, order, digits, root, out, verbose, guard):
     if family in OCTAHEDRAL:
         P, W, err = _run_octahedral(family, npts, order, digits, root, verbose)
     elif family == "ahrens_beylkin":
