@@ -91,7 +91,17 @@ def run(family, npts, digits, root, out, verbose=True):
 
     text = emit(family, npts, order, P, W, digits, err)
     if out:
-        path = Path(out) / f"{family}_{npts}.hpp"
+        out = Path(out)
+        # Writing into the source directory destroys the input: a partial run
+        # replaces the literal tables the remaining sizes still need to read,
+        # and every later size then fails to parse. Generate elsewhere and
+        # install deliberately.
+        src = (Path(root) / "include/integratorxx/quadratures/s2" / family).resolve()
+        if out.resolve() == src:
+            raise SystemExit(
+                f"refusing to write into the source directory {src}; "
+                "generate into a separate directory and copy the results in")
+        path = out / f"{family}_{npts}.hpp"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
         if verbose:
