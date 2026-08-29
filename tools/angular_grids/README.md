@@ -71,8 +71,8 @@ which works for the built-in types as well as Boost.Multiprecision and MPFR.
 * **Ahrens-Beylkin** has icosahedral rather than octahedral symmetry (15012
   points / 60 = 250.2 against 251 distinct weights, the rotation group without
   inversion). Same method, different orbit algebra.
-* **Constructing new rules**, including regenerating the corrupt 552-point
-  Ahrens-Beylkin table. That is the trust-region half of the problem.
+* **Constructing new rules.** That is the trust-region half of the problem;
+  see below for what is known about the one table that needs it.
 
 ## Equal-weight spherical designs (Womersley)
 
@@ -145,3 +145,51 @@ monomial set rather than the reduced one.
 At 7939 points a single `J*v` product is around 1.3e8 high-precision operations
 and the iteration count grows too, so the largest designs want a compiled MPFR
 kernel rather than this driver.
+
+
+## The 552-point Ahrens-Beylkin table
+
+This table is not a valid order-39 rule and cannot be recovered by refinement.
+The evidence, with AB-612 as a control throughout:
+
+**Its points admit no valid weighting.** The exactness conditions are *linear*
+in the weights, so the best possible weights for a fixed set of points follow
+from one least-squares solve:
+
+| grid                | best-possible weights, full order-39/41 conditions |
+|---------------------|----------------------------------------------------|
+| AB-612 (known good) | 8.3e-14, all positive                              |
+| AB-552              | **2.4e-02, five negative weights**                 |
+
+So the point *positions* are wrong, not just the weights, and not merely
+imprecise. This is the decisive result.
+
+**Refinement diverges.** Gauss-Newton from the tabulated data goes
+0.4619 -> 0.03831 -> 145.9. Levenberg-Marquardt globalises the step and does
+make progress -- 0.4619 -> 9.99e-4 -> 7.75e-6 -> 1.19e-7 -- but plateaus there,
+five orders short, and on a condition subset that does not determine all 28
+parameters.
+
+**What is not evidence.** The Jacobian's rank over low-degree conditions is 6
+against 28 parameters, which looks alarming until AB-612 is measured the same
+way and gives rank 6 against 31. Few icosahedral invariants exist at low
+degree; this says nothing about either grid.
+
+The remaining routes are to obtain the original Ahrens-Beylkin data
+(Proc. R. Soc. A 465, 3103) and refine that, or to construct the rule from
+scratch with a trust-region method. Of the two the first is much cheaper, and
+the other 55 sizes in the family are unaffected -- they all refine cleanly.
+
+## Regenerating everything
+
+```sh
+PYTHONPATH=tools python3 -m angular_grids.batch \
+    --family delley --digits 40 --out gen/ --jobs 8
+PYTHONPATH=tools python3 -m angular_grids.switch_to_load --family delley
+```
+
+`batch` reads the sizes from the family's own `algebraic_order_by_npts` table,
+so the two cannot drift apart, and skips rather than writes any size that
+misses the requested precision. `switch_to_load` then repoints the dispatch at
+the regenerated tables and drops the `4*M_PI` scaling loop for the families
+whose shipped tables are normalised to one.
