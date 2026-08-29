@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from mpmath import mpf
+from mpmath import mp, mpf
 
 _NUM = re.compile(r"[-+]?\d*\.\d+[EeDd][-+]?\d+")
 
@@ -17,12 +17,31 @@ def _section(text, name):
     return text[i:j]
 
 
+_EQUAL = re.compile(r"create_array<\s*(\d+)\s*,\s*T\s*>\s*\(\s*4\.0\s*\*\s*M_PI\s*/\s*(\d+)")
+
+
 def read_grid(path):
-    """Return (points, weights) from a *_<npts>.hpp data header."""
+    """Return (points, weights) from a *_<npts>.hpp data header.
+
+    Two weight formats occur. Lebedev-Laikov and Delley list the weights
+    explicitly. The Womersley grids are equal-weight spherical designs and
+    synthesise theirs with ``create_array<N, T>(4.0 * M_PI / N)``, so there is
+    no array to read.
+    """
     text = Path(path).read_text()
     flat = _numbers(_section(text, "points"))
-    weights = _numbers(_section(text, "weights"))
     points = [tuple(flat[3 * i:3 * i + 3]) for i in range(len(flat) // 3)]
+
+    m = _EQUAL.search(text)
+    if m:
+        n, denom = int(m.group(1)), int(m.group(2))
+        if n != denom or n != len(points):
+            raise ValueError(f"{path}: equal-weight size mismatch "
+                             f"({n}, {denom}, {len(points)} points)")
+        w = 4 * mp.pi / n
+        return points, [w] * n
+
+    weights = _numbers(_section(text, "weights"))
     if len(points) != len(weights):
         raise ValueError(f"{path}: {len(points)} points but {len(weights)} weights")
     return points, weights

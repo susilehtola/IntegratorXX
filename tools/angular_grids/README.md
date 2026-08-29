@@ -71,10 +71,77 @@ which works for the built-in types as well as Boost.Multiprecision and MPFR.
 * **Ahrens-Beylkin** has icosahedral rather than octahedral symmetry (15012
   points / 60 = 250.2 against 251 distinct weights, the rotation group without
   inversion). Same method, different orbit algebra.
-* **Womersley** grids are equal-weight spherical designs with no symmetry at
-  all: 2N angular unknowns, and the Jacobian is rank-deficient by exactly three
-  because any rotation of a design is a design. They refine fine, but need a
-  matrix-free least-squares step (CGLS) rather than a dense solve, and at 7939
-  points the residual evaluation wants a compiled high-precision kernel.
 * **Constructing new rules**, including regenerating the corrupt 552-point
   Ahrens-Beylkin table. That is the trust-region half of the problem.
+
+## Equal-weight spherical designs (Womersley)
+
+`designs.py` handles the Womersley family, which has no symmetry to exploit:
+every point is its own orbit, so the unknowns are the 2N tangential degrees of
+freedom of N points. Two things differ from the octahedral path.
+
+**Points are carried as unit 3-vectors, not (theta, phi).** The spherical chart
+is singular at the poles and real designs put points there -- the 32-point
+design has one at exactly `z = 1`. In that chart `d(p)/d(phi)` vanishes, so the
+Jacobian picks up a structurally zero column that is a coordinate artifact
+rather than a symmetry, and rotations about x and y cease to be expressible as
+finite tangent vectors. Measured on the 32-point design:
+
+| parameterisation      | zero columns | near-null directions | rotation generators `\|Jg\|/\|J\|\|g\|` |
+|-----------------------|-------------:|---------------------:|----------------------------------|
+| `(theta, phi)`        |            1 |                    3 | 3.4e-02, 1.3e-16, 2.0e-16        |
+| tangent frame         |            0 |                    3 | 2.0e-16, 1.4e-16, 2.9e-16        |
+
+Stepping in each point's tangent plane and renormalising (`retract`) is regular
+everywhere, and all three rotations then behave alike -- the residual `1e-16`
+being the accuracy of the tabulated input, not of the method.
+
+**The Jacobian is rank-deficient by exactly three**, since any rotation of a
+design is a design. This needs no special handling: CGLS started from a zero
+step keeps every iterate in `range(J^T)`, orthogonal to the null space, so it
+returns the minimum-norm step -- already the rotation-projected one. Explicit
+projection would be redundant. It *is* worth doing when constructing a design
+with a trust-region method, where zero-curvature directions interfere with the
+model and with the Hessian diagonal; `Design.rotation_generators()` returns them
+for that purpose.
+
+The conditions use monomials with `c` in `{0,1}`: on the sphere `z^2` reduces,
+leaving exactly `(order+1)^2` conditions -- the dimension of the polynomials of
+degree <= order on S^2 -- rather than `C(order+3,3)`. For order 7 that is 64
+rather than 120.
+
+**Two traps, both measured rather than reasoned about.**
+
+*The input points must be renormalised.* The tabulated coordinates are unit
+vectors only to double precision. Carrying them as 3-vectors inherits that
+~1e-16 inconsistency with the constraint `|p| = 1`, which corrupts the Jacobian
+at exactly the level the refinement is trying to work below -- checked against
+finite differences, 8.0e-16 relative error before renormalising and 1.7e-21
+after. The `(theta, phi)` chart hid this by normalising implicitly, since every
+`(theta, phi)` maps to an exactly unit vector.
+
+*The inner CGLS needs a generous iteration cap.* CG terminates in rank-many
+steps only in exact arithmetic; its rate goes as the square root of the
+condition number. Capping at `2 * 2N` starves it, the outer Gauss-Newton takes
+a bad step, and the result looks convincingly like convergence to a spurious
+floor:
+
+| CGLS cap        | womersley_50 outer residuals                          |
+|-----------------|-------------------------------------------------------|
+| `2 * 2N` = 200  | 5.75e-16, 3.28e-18, 2.78e-18, 2.45e-18 (stalls)       |
+| `6 * 2N` = 600  | 5.75e-16, 2.16e-28                                     |
+
+The cap is now `12 * 2N`, with the residual tolerance doing the real stopping
+and a stagnation guard so a converged solve exits at once. With both fixed:
+
+```
+womersley_32 (order 7):  7.39e-16 -> 3.82e-30 -> 9.18e-41   [107s]
+womersley_50 (order 9):  5.75e-16 -> 2.16e-28 -> 4.96e-41   [358s]
+```
+
+both reaching the 40-digit working precision floor, verified against the full
+monomial set rather than the reduced one.
+
+At 7939 points a single `J*v` product is around 1.3e8 high-precision operations
+and the iteration count grows too, so the largest designs want a compiled MPFR
+kernel rather than this driver.
