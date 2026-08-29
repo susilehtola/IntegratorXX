@@ -4,7 +4,10 @@ from pathlib import Path
 
 from mpmath import mp, mpf
 
-_NUM = re.compile(r"[-+]?\d*\.\d+[EeDd][-+]?\d+")
+# Data files mix plain decimals with exponent form, sometimes within one array
+# (ahrens_beylkin_552.hpp has both). Requiring an exponent silently drops most
+# of the values, so make it optional.
+_NUM = re.compile(r"[-+]?\d*\.\d+(?:[EeDd][-+]?\d+)?")
 
 
 def _numbers(text):
