@@ -8,7 +8,7 @@ rule in the first place, and needs no globalisation.
 """
 import collections
 
-from mpmath import mp, mpf, fabs, matrix
+from mpmath import fabs, im, matrix, mp, mpf
 
 from .linalg import lstsq_step
 from .moments import conditions, exact_moment, orbit_moment
@@ -41,6 +41,22 @@ def decompose(points, weights, tol=mpf("1e-9")):
             raise ValueError(f"orbit of type {otype.name} has {len(members)} points, expected {otype.size}")
         orbits.append(Orbit(otype, params, w0))
     return orbits
+
+
+def _in_domain(orbits):
+    """Are all orbit bases still real?
+
+    The orbit types carry implicit constraints -- bk is (l, l, sqrt(1-2 l^2)),
+    valid only for l <= 1/sqrt(2); ck and dk have their own. A Newton step can
+    overshoot one, and mpmath then returns a complex square root, which
+    propagates until something tries to order two complex numbers. Backtracking
+    on the step is cheaper than reparameterising the orbits.
+    """
+    for o in orbits:
+        for v in o.type.base(o.params):
+            if im(v) != 0:
+                return False
+    return True
 
 
 def _pack(orbits):
@@ -95,7 +111,16 @@ def refine(orbits, order, target_dps, max_iter=12, verbose=False):
         if r < tol:
             break
         d = lstsq_step(J, F)
-        _unpack(orbits, [x + d[j] for j, x in enumerate(_pack(orbits))])
+        base = _pack(orbits)
+        scale = mpf(1)
+        for _ in range(40):                   # backtrack until the step stays in domain
+            _unpack(orbits, [x + scale * d[j] for j, x in enumerate(base)])
+            if _in_domain(orbits):
+                break
+            scale /= 2
+        else:
+            _unpack(orbits, base)
+            break
     return hist
 
 
