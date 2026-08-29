@@ -5,6 +5,7 @@
 #include <integratorxx/types.hpp>
 #include <integratorxx/type_traits.hpp>
 
+#include <stdexcept>
 #include <utility>
 #include <cassert>
 #include <memory>
@@ -48,6 +49,9 @@ public:
 
   template <typename RadialQuad>
   void finalize( const RadialQuad& rq ) {
+    if( partition_idx_.empty() )
+      throw std::runtime_error(
+        "RadialGridPartition: cannot finalize without any angular quadrature");
     if( partition_idx_.back() != rq.npts() )
       partition_idx_.emplace_back( rq.npts() ); 
   }
@@ -183,13 +187,13 @@ protected:
   const point_container& sph_points_adaptor() const override { 
     return quad_base_type::points();
   }
-  point_container& sph_points_adaptor() override {;
+  point_container& sph_points_adaptor() override {
     return quad_base_type::points();
   }
-  const weight_container& sph_weights_adaptor() const override {;
+  const weight_container& sph_weights_adaptor() const override {
     return quad_base_type::weights();
   }
-  weight_container& sph_weights_adaptor() override {;
+  weight_container& sph_weights_adaptor() override {
     return quad_base_type::weights();
   }
 
