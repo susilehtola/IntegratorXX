@@ -80,6 +80,14 @@ def run(family, npts, digits, root, out, verbose=True, guards=(20, 60, 140)):
     short.
     """
     order = algebraic_order(family, npts, root)
+
+    # Start from a guard the conditioning actually warrants. Measured on the
+    # equilibrated Jacobian, the condition number climbs steeply with the
+    # parameter count -- 2.0e+24 at 120 parameters (delley_1730), 8.19e+26 at
+    # 140 (delley_2030) -- so roughly log10(cond) ~ 0.15 * params + 6. Guessing
+    # low just burns a long failed attempt before the retry.
+    guards = tuple(g + _size_guard(family, npts, root) for g in guards)
+
     last = None
     for guard in guards:
         mp.dps = digits + guard
@@ -91,6 +99,25 @@ def run(family, npts, digits, root, out, verbose=True, guards=(20, 60, 140)):
                 print(f"  {e}; retrying at {digits + guard * 3} working digits",
                       flush=True)
     raise SystemExit(last)
+
+
+def _size_guard(family, npts, root):
+    """Extra working digits warranted by this grid's parameter count."""
+    mp.dps = 30
+    try:
+        if family in OCTAHEDRAL:
+            points, weights = read_grid(grid_path(root, family, npts))
+            orbits = decompose(points, [w * 4 * mp.pi / sum(weights) for w in weights])
+            n = sum(1 + o.type.n_param for o in orbits)
+        elif family == "ahrens_beylkin":
+            from . import ab_refine as ab
+            points, weights = read_grid(grid_path(root, family, npts))
+            n = ab.n_param(ab.decompose(points, weights))
+        else:
+            n = 2 * npts
+    except Exception:                          # noqa: BLE001 - fall back to no extra
+        return 0
+    return max(0, int(0.2 * n) - 4)
 
 
 def _attempt(family, npts, order, digits, root, out, verbose, guard):
