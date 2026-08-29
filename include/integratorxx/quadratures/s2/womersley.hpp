@@ -5,6 +5,7 @@
 #include <integratorxx/util/create_array.hpp>
 #include <integratorxx/quadratures/s2/womersley/womersley_grids.hpp>
 #include <vector>
+#include <cmath>
 
 namespace IntegratorXX {
 

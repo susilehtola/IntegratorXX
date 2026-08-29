@@ -2,6 +2,7 @@
 
 #include <integratorxx/quadratures/primitive/gausschebyshev2.hpp>
 #include <integratorxx/quadratures/radial/radial_transform.hpp>
+#include <cmath>
 
 namespace IntegratorXX {
 

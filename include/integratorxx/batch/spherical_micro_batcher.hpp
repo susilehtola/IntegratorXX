@@ -7,6 +7,14 @@
 #include <iomanip>
 #include <vector>
 #include <array>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <iterator>
+#include <memory>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
 
 
 namespace IntegratorXX {

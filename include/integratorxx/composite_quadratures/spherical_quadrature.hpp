@@ -3,6 +3,7 @@
 #include <integratorxx/composite_quadratures/product_quadrature.hpp>
 #include <integratorxx/types.hpp>
 #include <integratorxx/type_traits.hpp>
+#include <memory>
 
 namespace IntegratorXX {
 

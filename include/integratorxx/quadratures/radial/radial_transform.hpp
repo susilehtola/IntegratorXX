@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <cstddef>
+#include <tuple>
 
 #include <integratorxx/quadrature.hpp>
 

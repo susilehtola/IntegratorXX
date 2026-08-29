@@ -2,6 +2,8 @@
 
 #include <integratorxx/quadrature.hpp>
 #include <cassert>
+#include <tuple>
+#include <utility>
 
 namespace IntegratorXX {
 

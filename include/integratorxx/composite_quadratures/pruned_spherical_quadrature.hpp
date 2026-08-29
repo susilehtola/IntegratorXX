@@ -6,6 +6,9 @@
 #include <integratorxx/type_traits.hpp>
 
 #include <utility>
+#include <cassert>
+#include <memory>
+#include <vector>
 
 namespace IntegratorXX {
 

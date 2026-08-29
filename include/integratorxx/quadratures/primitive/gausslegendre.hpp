@@ -3,6 +3,10 @@
 #include <integratorxx/quadrature.hpp>
 #include <integratorxx/util/legendre.hpp>
 #include <vector>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <tuple>
 
 namespace IntegratorXX {
 
