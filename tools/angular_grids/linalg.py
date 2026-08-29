@@ -1,58 +1,95 @@
-"""Small dense solves shared by the refinement paths.
+"""Small dense least squares shared by the refinement paths.
 
 The Gauss-Newton systems here are tiny but not always full rank, and mpmath's
 lu_solve and qr_solve both refuse a singular matrix outright rather than
-returning something usable. Working precision changes whether a given system
-looks singular -- delley_1454 solves cleanly at 40 digits and fails at 20 --
-so this is a robustness property rather than a property of any one grid.
+returning something usable.
+
+Forming the normal equations and then dropping ill-conditioned columns does not
+work either: the two failure modes trade off against each other. With a fixed
+1e-16 rank threshold, delley_1454 solves at 20 digits but delley_974 stalls at
+3.1e-29 instead of 6.9e-51, because columns that still carry information are
+being discarded. Tying the threshold to the working precision fixes 974 and
+puts 1454 back to "numerically singular". The tension is not in the threshold
+-- it is that J^T J squares the condition number.
+
+So the step is solved by a rank-revealing modified Gram-Schmidt QR of J itself.
+Columns that are genuinely unresolvable are skipped and left at zero; the rest
+are solved without ever squaring anything.
 """
-from mpmath import lu_solve, matrix, mp, mpf, sqrt
+from mpmath import matrix, mp, mpf, sqrt
 
 
-def independent_columns(J, tol=mpf("1e-16")):
-    """Indices of a maximal independent set of columns, by modified Gram-Schmidt.
+def _mgs(J, tol):
+    """Rank-revealing modified Gram-Schmidt.
 
-    The threshold is relative to each column's own norm, so columns that differ
-    wildly in scale (a weight column against an angular one) are judged fairly.
+    Returns (kept, Q, R) with Q's columns orthonormal and R upper triangular
+    over the kept columns, so that J[:, kept] = Q R.
     """
-    keep, basis = [], []
+    kept, Q, R = [], [], []
     for j in range(J.cols):
         v = [J[i, j] for i in range(J.rows)]
         nrm0 = sqrt(mp.fsum(x * x for x in v))
         if nrm0 == 0:
             continue
-        for u in basis:
-            d = mp.fsum(v[i] * u[i] for i in range(len(v)))
-            v = [v[i] - d * u[i] for i in range(len(v))]
+        col = []
+        for q in Q:
+            d = mp.fsum(v[i] * q[i] for i in range(len(v)))
+            col.append(d)
+            v = [v[i] - d * q[i] for i in range(len(v))]
         nrm = sqrt(mp.fsum(x * x for x in v))
-        if nrm > tol * nrm0:
-            basis.append([x / nrm for x in v])
-            keep.append(j)
-    return keep
+        if nrm <= tol * nrm0:
+            continue                      # not resolvable against what we have
+        Q.append([x / nrm for x in v])
+        col.append(nrm)
+        R.append(col)                     # length len(Q) after the append
+        kept.append(j)
+    return kept, Q, R
 
 
-def lstsq_step(J, F):
-    """Gauss-Newton step, solved only in the directions the Jacobian resolves.
+def _default_tol():
+    """Cut only what is unresolvable at the working precision.
 
-    Directions outside the resolved set are left at zero: the conditions cannot
-    see them, so moving along them is guesswork.
+    QR does not square the condition number, so it carries columns the normal
+    equations could not, and the threshold should discard only genuinely null
+    directions. Cutting at a fixed 1e-14 instead costs delley_974 its quadratic
+    convergence: 11 iterations to 1.97e-33 rather than 2 to 6.93e-51.
+
+    Cases that need more working precision than they are given now fail the
+    generator's final verification rather than crashing or diverging silently.
+    delley_1454 is one: it refines cleanly at 40 digits and cannot be solved at
+    20, whatever the threshold.
     """
-    keep = independent_columns(J)
-    m = len(keep)
+    return mpf(10) ** (-(mp.dps - 5))
+
+
+def independent_columns(J, tol=None):
+    """Indices of a maximal independent set of columns."""
+    return _mgs(J, tol if tol is not None else _default_tol())[0]
+
+
+def lstsq_step(J, F, tol=None):
+    """Gauss-Newton step for min ||J d + F||, without forming J^T J.
+
+    Directions the Jacobian cannot resolve are left at zero: the conditions
+    cannot see them, so moving along them is guesswork.
+    """
+    kept, Q, R = _mgs(J, tol if tol is not None else _default_tol())
+    m = len(kept)
     if m == 0:
         return [mpf(0)] * J.cols
-    JtJ = matrix(m, m)
-    Jtf = matrix(m, 1)
-    for a in range(m):
-        ja = keep[a]
-        for b in range(a, m):
-            jb = keep[b]
-            v = mp.fsum(J[k, ja] * J[k, jb] for k in range(J.rows))
-            JtJ[a, b] = v
-            JtJ[b, a] = v
-        Jtf[a] = mp.fsum(J[k, ja] * F[k] for k in range(J.rows))
-    red = lu_solve(JtJ, -Jtf)
+
+    b = [-F[i] for i in range(J.rows)]
+    y = [mp.fsum(q[i] * b[i] for i in range(len(b))) for q in Q]
+
+    # back-substitute R x = y; R[j] holds column j of R, entries 0..j
+    x = [mpf(0)] * m
+    for j in range(m - 1, -1, -1):
+        acc = y[j]
+        for k in range(j + 1, m):
+            acc -= R[k][j] * x[k]
+        x[j] = acc / R[j][j]
+
     step = [mpf(0)] * J.cols
-    for a, j in enumerate(keep):
-        step[j] = red[a]
+    for a, j in enumerate(kept):
+        step[j] = x[a]
     return step
