@@ -49,6 +49,21 @@ or two angular parameters:
 So the largest Lebedev rule is a 385-parameter dense Newton solve, not a
 17430-parameter one.
 
+The step itself is a rank-revealing modified Gram-Schmidt QR of the Jacobian,
+never the normal equations. Two things force that. The Jacobian is not always
+full rank -- AB-312 comes out 13 of 16 -- and both `lu_solve` and mpmath's
+`qr_solve` refuse a singular matrix outright. And forming `J^T J` squares the
+condition number, which turns a solvable system into an unsolvable one: with a
+fixed rank threshold on the normal equations, delley_974 stalls at 3.1e-29
+instead of reaching 6.9e-51, while tightening the threshold to fix that puts
+delley_1454 back to "numerically singular". QR removes the tension rather than
+trading the two failures against each other.
+
+A size that needs more working precision than it is given now fails the
+generator's verification and is not written. delley_1454 is one: 102 parameters
+at that conditioning are not resolvable in 20 digits, and it refines cleanly at
+40.
+
 The exactness conditions are imposed on even monomials. On the unit sphere
 `z^2 = 1 - x^2 - y^2`, so every even monomial reduces to a fixed linear
 combination of `x^(2a) y^(2b)`; imposing only those implies the rest, at about
