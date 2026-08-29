@@ -16,6 +16,7 @@ group element applied to that step:  d(R p)/dp . e = R e.
 from mpmath import mp, mpf, fabs, lu_solve, matrix, sqrt
 
 from .designs import _grad, conditions, exact_monomial, retract, tangent_frame
+from .linalg import independent_columns, lstsq_step
 from .icosahedral import group, orbit, special_positions
 
 SPECIAL_SIZES = (12, 20, 30)      # orbits with no free angular parameter
@@ -162,7 +163,7 @@ def refine(orbits, order, target_dps, max_iter=10, verbose=False, conds=None):
             print(f"      iter {it}: max|residual| = {mp.nstr(r, 4)}", flush=True)
         if r < tol:
             break
-        _apply(orbits, _lstsq_step(J, F))
+        _apply(orbits, lstsq_step(J, F))
     return hist
 
 
@@ -264,130 +265,3 @@ def _rank(J, tol=mpf("1e-18")):
         if nrm > tol:
             cols.append([x / nrm for x in v])
     return len(cols)
-
-
-def independent_columns(J, tol=mpf("1e-16")):
-    """Indices of a maximal independent set of columns, by modified Gram-Schmidt."""
-    keep, basis = [], []
-    for j in range(J.cols):
-        v = [J[i, j] for i in range(J.rows)]
-        nrm0 = sqrt(mp.fsum(x * x for x in v))
-        if nrm0 == 0:
-            continue
-        for u in basis:
-            d = mp.fsum(v[i] * u[i] for i in range(len(v)))
-            v = [v[i] - d * u[i] for i in range(len(v))]
-        nrm = sqrt(mp.fsum(x * x for x in v))
-        if nrm > tol * nrm0:            # relative, so column scale does not matter
-            basis.append([x / nrm for x in v])
-            keep.append(j)
-    return keep
-
-
-def _lstsq_step(J, F):
-    """Gauss-Newton step, solved only in the directions the Jacobian resolves.
-
-    The Jacobian is not always full rank -- AB-312 comes out 13 of 16 -- and
-    both a normal-equations LU and mpmath's qr_solve simply refuse a singular
-    matrix. Restricting to an independent set of columns and leaving the rest
-    at zero gives the step the well-determined directions deserve and declines
-    to move along the ones the conditions cannot see.
-    """
-    keep = independent_columns(J)
-    m = len(keep)
-    JtJ = matrix(m, m); Jtf = matrix(m, 1)
-    for a in range(m):
-        ja = keep[a]
-        for b in range(a, m):
-            jb = keep[b]
-            v = mp.fsum(J[k, ja] * J[k, jb] for k in range(J.rows))
-            JtJ[a, b] = v; JtJ[b, a] = v
-        Jtf[a] = mp.fsum(J[k, ja] * F[k] for k in range(J.rows))
-    red = lu_solve(JtJ, -Jtf)
-    step = [mpf(0)] * J.cols
-    for a, j in enumerate(keep):
-        step[j] = red[a]
-    return step
-
-
-def _state(orbits):
-    return [(list(o.rep), o.weight) for o in orbits]
-
-
-def _restore(orbits, st):
-    for o, (rep, w) in zip(orbits, st):
-        o.rep = list(rep)
-        o.weight = w
-        o.frame = tangent_frame(o.rep)
-
-
-def _sumsq(F):
-    return mp.fsum(f * f for f in F)
-
-
-def refine_lm(orbits, order, target_dps, conds=None, max_iter=200,
-              lam0=mpf("1e-3"), verbose=False):
-    """Levenberg-Marquardt: Gauss-Newton with adaptive damping.
-
-    Plain Gauss-Newton diverges on a starting point outside the basin -- AB-552
-    goes 0.4619 -> 0.03831 -> 145.9 -- because nothing constrains the step
-    length. Damping the normal equations by lam * diag(J^T J) interpolates
-    between the Gauss-Newton step (small lam) and a short steepest-descent step
-    (large lam), and lam is adapted on whether the step actually reduced the
-    residual.
-
-    This is the cheapest form of globalisation that fits the existing
-    machinery. It is not a trust-region method and makes no claim to find a
-    rule that is not near the starting point.
-    """
-    conds = conds if conds is not None else conditions(order)
-    tol = mpf(10) ** (-target_dps)
-    lam = lam0
-    F, J = residual_and_jacobian(orbits, conds, cache=image_cache(orbits))
-    cost = _sumsq(F)
-    hist = [max(fabs(f) for f in F)]
-    if verbose:
-        print(f"      start: max|F| = {mp.nstr(hist[0], 4)}", flush=True)
-
-    for it in range(max_iter):
-        if max(fabs(f) for f in F) < tol:
-            break
-        n = J.cols
-        JtJ = matrix(n, n); Jtf = matrix(n, 1)
-        for i in range(n):
-            for j in range(i, n):
-                v = mp.fsum(J[k, i] * J[k, j] for k in range(J.rows))
-                JtJ[i, j] = v; JtJ[j, i] = v
-            Jtf[i] = mp.fsum(J[k, i] * F[k] for k in range(J.rows))
-
-        st = _state(orbits)
-        accepted = False
-        for _ in range(30):                       # inner damping search
-            A = matrix(n, n)
-            for i in range(n):
-                for j in range(n):
-                    A[i, j] = JtJ[i, j]
-                A[i, i] = JtJ[i, i] * (1 + lam) + lam * mpf("1e-30")
-            try:
-                d = lu_solve(A, -Jtf)
-            except Exception:
-                lam *= 10
-                continue
-            _apply(orbits, [d[k] for k in range(n)])
-            Fn, Jn = residual_and_jacobian(orbits, conds, cache=image_cache(orbits))
-            if _sumsq(Fn) < cost:
-                F, J, cost = Fn, Jn, _sumsq(Fn)
-                lam = max(lam / 10, mpf("1e-25"))
-                accepted = True
-                break
-            _restore(orbits, st)
-            lam *= 10
-            if lam > mpf("1e20"):
-                break
-        hist.append(max(fabs(f) for f in F))
-        if verbose and (it < 5 or it % 20 == 0):
-            print(f"      iter {it}: max|F| = {mp.nstr(hist[-1], 4)}  lam = {mp.nstr(lam, 3)}",
-                  flush=True)
-        if not accepted:
-            break
-    return hist

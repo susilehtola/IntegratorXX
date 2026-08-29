@@ -8,8 +8,9 @@ rule in the first place, and needs no globalisation.
 """
 import collections
 
-from mpmath import mp, mpf, fabs, lu_solve, matrix
+from mpmath import mp, mpf, fabs, matrix
 
+from .linalg import lstsq_step
 from .moments import conditions, exact_moment, orbit_moment
 from .orbits import classify, signed_permutations
 
@@ -93,14 +94,7 @@ def refine(orbits, order, target_dps, max_iter=12, verbose=False):
             print(f"      iter {it}: max|residual| = {mp.nstr(r, 4)}")
         if r < tol:
             break
-        n = J.cols
-        JtJ = matrix(n, n); Jtf = matrix(n, 1)
-        for i in range(n):
-            for j in range(i, n):
-                v = mp.fsum(J[k, i] * J[k, j] for k in range(J.rows))
-                JtJ[i, j] = v; JtJ[j, i] = v
-            Jtf[i] = mp.fsum(J[k, i] * F[k] for k in range(J.rows))
-        d = lu_solve(JtJ, -Jtf)
+        d = lstsq_step(J, F)
         _unpack(orbits, [x + d[j] for j, x in enumerate(_pack(orbits))])
     return hist
 
