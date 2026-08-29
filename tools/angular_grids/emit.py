@@ -57,8 +57,12 @@ struct {struct_name} {{
   }};
 
   /// Materialise the grid at the working precision of T.
-  static void load(std::array<cartesian_pt_t<T>, {npts}>& p,
-                   std::array<T, {npts}>& w) {{
+  ///
+  /// Templated on the containers so it can fill the library's
+  /// std::vector<cartesian_pt_t<T>> / std::vector<T> directly, in the same
+  /// role detail::copy_grid played for the literal tables.
+  template <typename PointContainer, typename WeightContainer>
+  static void load(PointContainer& p, WeightContainer& w) {{
     for(size_t i = 0; i < {npts}; ++i) {{
       for(size_t j = 0; j < 3; ++j)
         p[i][j] = detail::grid_scalar<T>::parse(point_digits[3 * i + j]);
@@ -71,8 +75,10 @@ struct {struct_name} {{
 }}  // namespace IntegratorXX
 """
 
-NAMESPACES = {"lebedev_laikov": "LebedevLaikovGrids", "delley": "DelleyGrids"}
-TITLES = {"lebedev_laikov": "Lebedev-Laikov", "delley": "Delley"}
+NAMESPACES = {"lebedev_laikov": "LebedevLaikovGrids", "delley": "DelleyGrids",
+              "ahrens_beylkin": "AhrensBeylkinGrids", "womersley": "WomersleyGrids"}
+TITLES = {"lebedev_laikov": "Lebedev-Laikov", "delley": "Delley",
+          "ahrens_beylkin": "Ahrens-Beylkin", "womersley": "Womersley"}
 
 
 def _fmt(values, digits, per_line):

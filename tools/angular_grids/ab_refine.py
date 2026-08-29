@@ -222,8 +222,14 @@ def select_conditions(orbits, order, oversample=3, verbose=False):
         idx += 1
 
     cache = image_cache(orbits)
+    # Cap the walk: when the Jacobian is genuinely rank-deficient the rank
+    # never fills, and without a cap this visits every candidate -- 1600 of
+    # them at order 39. The step solver handles a deficient Jacobian, so an
+    # incomplete basis is fine; verification against the full set is what
+    # actually guards correctness.
+    limit = max(oversample * n, 12 * n)
     basis, chosen = [], []
-    for cand in candidates:
+    for cand in candidates[:limit]:
         _, Jrow = residual_and_jacobian(orbits, [cand], cache=cache)
         v = [Jrow[0, k] for k in range(n)]
         for u in basis:
@@ -241,8 +247,8 @@ def select_conditions(orbits, order, oversample=3, verbose=False):
     if verbose:
         print(f"      selected {len(chosen)} of {len(conditions(order))} conditions, "
               f"rank {len(basis)}/{n}", flush=True)
-    if len(basis) < n:
-        return conditions(order)          # fall back rather than under-determine
+    if not chosen:
+        return conditions(order)
     return chosen
 
 
@@ -302,3 +308,86 @@ def _lstsq_step(J, F):
     for a, j in enumerate(keep):
         step[j] = red[a]
     return step
+
+
+def _state(orbits):
+    return [(list(o.rep), o.weight) for o in orbits]
+
+
+def _restore(orbits, st):
+    for o, (rep, w) in zip(orbits, st):
+        o.rep = list(rep)
+        o.weight = w
+        o.frame = tangent_frame(o.rep)
+
+
+def _sumsq(F):
+    return mp.fsum(f * f for f in F)
+
+
+def refine_lm(orbits, order, target_dps, conds=None, max_iter=200,
+              lam0=mpf("1e-3"), verbose=False):
+    """Levenberg-Marquardt: Gauss-Newton with adaptive damping.
+
+    Plain Gauss-Newton diverges on a starting point outside the basin -- AB-552
+    goes 0.4619 -> 0.03831 -> 145.9 -- because nothing constrains the step
+    length. Damping the normal equations by lam * diag(J^T J) interpolates
+    between the Gauss-Newton step (small lam) and a short steepest-descent step
+    (large lam), and lam is adapted on whether the step actually reduced the
+    residual.
+
+    This is the cheapest form of globalisation that fits the existing
+    machinery. It is not a trust-region method and makes no claim to find a
+    rule that is not near the starting point.
+    """
+    conds = conds if conds is not None else conditions(order)
+    tol = mpf(10) ** (-target_dps)
+    lam = lam0
+    F, J = residual_and_jacobian(orbits, conds, cache=image_cache(orbits))
+    cost = _sumsq(F)
+    hist = [max(fabs(f) for f in F)]
+    if verbose:
+        print(f"      start: max|F| = {mp.nstr(hist[0], 4)}", flush=True)
+
+    for it in range(max_iter):
+        if max(fabs(f) for f in F) < tol:
+            break
+        n = J.cols
+        JtJ = matrix(n, n); Jtf = matrix(n, 1)
+        for i in range(n):
+            for j in range(i, n):
+                v = mp.fsum(J[k, i] * J[k, j] for k in range(J.rows))
+                JtJ[i, j] = v; JtJ[j, i] = v
+            Jtf[i] = mp.fsum(J[k, i] * F[k] for k in range(J.rows))
+
+        st = _state(orbits)
+        accepted = False
+        for _ in range(30):                       # inner damping search
+            A = matrix(n, n)
+            for i in range(n):
+                for j in range(n):
+                    A[i, j] = JtJ[i, j]
+                A[i, i] = JtJ[i, i] * (1 + lam) + lam * mpf("1e-30")
+            try:
+                d = lu_solve(A, -Jtf)
+            except Exception:
+                lam *= 10
+                continue
+            _apply(orbits, [d[k] for k in range(n)])
+            Fn, Jn = residual_and_jacobian(orbits, conds, cache=image_cache(orbits))
+            if _sumsq(Fn) < cost:
+                F, J, cost = Fn, Jn, _sumsq(Fn)
+                lam = max(lam / 10, mpf("1e-25"))
+                accepted = True
+                break
+            _restore(orbits, st)
+            lam *= 10
+            if lam > mpf("1e20"):
+                break
+        hist.append(max(fabs(f) for f in F))
+        if verbose and (it < 5 or it % 20 == 0):
+            print(f"      iter {it}: max|F| = {mp.nstr(hist[-1], 4)}  lam = {mp.nstr(lam, 3)}",
+                  flush=True)
+        if not accepted:
+            break
+    return hist
