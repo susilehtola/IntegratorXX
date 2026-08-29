@@ -105,3 +105,50 @@ def orbit(p, tol=mpf("1e-9")):
         if not any(sum((q[i] - r[i]) ** 2 for i in range(3)) < tol * tol for r in out):
             out.append(q)
     return out
+
+
+def special_positions(tol=mpf("1e-9")):
+    """Exact representatives of the three special orbits.
+
+    A 12-, 20- or 30-point orbit has no free parameter: its position is fixed
+    by the symmetry. Taking the representative from tabulated double-precision
+    data instead makes it a *generic* point whose 60 images cluster in fives
+    (or threes, or twos) rather than coinciding, and de-duplication then keeps
+    an arbitrary member of each cluster -- injecting ~1e-16 of asymmetry into
+    a grid that should be exactly symmetric.
+
+    Returns {12: vertex, 20: face centre, 30: edge midpoint}.
+    """
+    V = _icosahedron_vertices()
+
+    def norm(p):
+        m = sqrt(sum(x * x for x in p))
+        return tuple(x / m for x in p)
+
+    def dist2(a, b):
+        return sum((a[i] - b[i]) ** 2 for i in range(3))
+
+    # nearest-neighbour distance defines adjacency
+    ds = sorted(dist2(V[0], w) for w in V[1:])
+    dmin = ds[0]
+    adj = lambda a, b: dist2(a, b) < dmin * mpf("1.5")
+
+    edge = None
+    face = None
+    for i, a in enumerate(V):
+        for b in V[i + 1:]:
+            if not adj(a, b):
+                continue
+            if edge is None:
+                edge = norm([a[k] + b[k] for k in range(3)])
+            for c in V:
+                if c is a or c is b or not (adj(a, c) and adj(b, c)):
+                    continue
+                if face is None:
+                    face = norm([a[k] + b[k] + c[k] for k in range(3)])
+                break
+            if face is not None and edge is not None:
+                break
+        if face is not None and edge is not None:
+            break
+    return {12: V[0], 20: face, 30: edge}
