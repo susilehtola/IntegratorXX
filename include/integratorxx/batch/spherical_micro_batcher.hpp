@@ -255,10 +255,10 @@ class SphericalMicroBatcher {
   
     using value_type        = 
       std::tuple<point_type,point_type,point_container,weight_container>;
-    using different_type    = size_t;
-    using pointer           = value_type*;
-    using reference         = value_type&;
-    using iterator_catagory = std::input_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = void;
+    using reference         = value_type;
+    using iterator_category = std::input_iterator_tag;
 
     index_iterator idx_it;
     point_iterator  point_begin;
@@ -275,17 +275,18 @@ class SphericalMicroBatcher {
       return retval;
     }
 
-    iterator& operator+(int i) {
-      idx_it += i;
-      return *this;
-    } 
+    iterator operator+(difference_type i) const {
+      iterator copy = *this;
+      copy.idx_it += i;
+      return copy;
+    }
 
-    bool operator==( iterator other ){ return idx_it == other.idx_it; }
-    bool operator!=( iterator other ){ return !(*this == other);   }
+    bool operator==( const iterator& other ) const { return idx_it == other.idx_it; }
+    bool operator!=( const iterator& other ) const { return !(*this == other);   }
 
 
 
-    auto range() {
+    auto range() const {
 
       const auto idx      = *idx_it;
       const auto idx_next = *(idx_it+1);
@@ -302,7 +303,7 @@ class SphericalMicroBatcher {
 
     }
 
-    value_type operator*() {
+    value_type operator*() const {
 
       auto [npts,pb,pe,wb,we] = range();
       auto [box_lo, box_up]   = detail::get_box_bounds_points(pb, pe);
@@ -325,10 +326,10 @@ class SphericalMicroBatcher {
   
     using value_type        = 
       std::tuple<point_type,point_type,point_container,weight_container>;
-    using different_type    = size_t;
-    using pointer           = value_type*;
-    using reference         = value_type&;
-    using iterator_catagory = std::input_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = void;
+    using reference         = value_type;
+    using iterator_category = std::input_iterator_tag;
 
     const_index_iterator idx_it;
     const_point_iterator  point_begin;
@@ -346,17 +347,18 @@ class SphericalMicroBatcher {
       return retval;
     }
 
-    const_iterator& operator+(int i) {
-      idx_it += i;
-      return *this;
-    } 
+    const_iterator operator+(difference_type i) const {
+      const_iterator copy = *this;
+      copy.idx_it += i;
+      return copy;
+    }
 
-    bool operator==( iterator other ){ return idx_it == other.idx_it; }
-    bool operator!=( iterator other ){ return !(*this == other);   }
+    bool operator==( const const_iterator& other ) const { return idx_it == other.idx_it; }
+    bool operator!=( const const_iterator& other ) const { return !(*this == other);   }
 
 
 
-    auto range() {
+    auto range() const {
 
       const auto idx      = *idx_it;
       const auto idx_next = *(idx_it+1);
@@ -373,7 +375,7 @@ class SphericalMicroBatcher {
 
     }
 
-    value_type operator*() {
+    value_type operator*() const {
 
       auto [npts,pb,pe,wb,we] = range();
       auto [box_lo, box_up]   = detail::get_box_bounds_points(pb, pe);
@@ -464,6 +466,9 @@ public:
     return const_iterator( partition_idx_.cend()-1, quad_->points().cbegin(),
       quad_->weights().cbegin() );
   }
+
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end()   const { return cend();   }
 
   typename iterator::value_type at( size_t i ) {
     if( i >= nbatches() )

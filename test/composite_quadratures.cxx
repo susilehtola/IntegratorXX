@@ -155,6 +155,26 @@ TEST_CASE( "Spherical Quadratures", "[sph-quad]" ) {
 
     CHECK( npts_c == npts );
 
+    // Iterating a const batcher: const_iterator compared against the
+    // non-const iterator type, so this could not previously compile.
+    npts_c = 0;
+    for( auto&& [box_lo, box_up, points_b, weights_b] : cbatcher ) {
+
+      auto npts_b = points_b.size();
+      CHECK( npts_b != 0 );
+      npts_c += npts_b;
+
+    }
+
+    CHECK( npts_c == npts );
+
+    npts_c = 0;
+    for( auto it = cbatcher.cbegin(); it != cbatcher.cend(); ++it ) {
+      npts_c += std::get<2>(*it).size();
+    }
+
+    CHECK( npts_c == npts );
+
     auto batcher_clone = batcher.clone();
     CHECK( &batcher.quadrature() != &batcher_clone.quadrature() );
     CHECK( batcher.npts() == batcher_clone.npts() );
