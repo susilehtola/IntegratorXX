@@ -112,13 +112,22 @@ def refine(orbits, order, target_dps, max_iter=12, verbose=False):
             break
         d = lstsq_step(J, F)
         base = _pack(orbits)
+        # Damped Newton. Staying in the orbits' domain is necessary but not
+        # sufficient: on the larger Delley grids the undamped step is simply
+        # bad, and the residual grows from 1e-16 to O(1) over a few iterations.
+        # Halve until the step both keeps every orbit real and actually reduces
+        # the residual.
         scale = mpf(1)
-        for _ in range(40):                   # backtrack until the step stays in domain
+        improved = False
+        for _ in range(60):
             _unpack(orbits, [x + scale * d[j] for j, x in enumerate(base)])
             if _in_domain(orbits):
-                break
+                Fn, _ = _residual_and_jacobian(orbits, conds, want_jac=False)
+                if max(fabs(f) for f in Fn) < r:
+                    improved = True
+                    break
             scale /= 2
-        else:
+        if not improved:
             _unpack(orbits, base)
             break
     return hist
