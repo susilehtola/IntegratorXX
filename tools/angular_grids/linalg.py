@@ -73,7 +73,21 @@ def lstsq_step(J, F, tol=None):
     Directions the Jacobian cannot resolve are left at zero: the conditions
     cannot see them, so moving along them is guesswork.
     """
-    kept, Q, R = _mgs(J, tol if tol is not None else _default_tol())
+    # Column equilibration. A weight column and an angular column differ by
+    # orders of magnitude here, and that disparity alone wrecks the
+    # conditioning: on delley_2354 the undamped step is unusable and damping
+    # then crawls, a factor of two per iteration instead of squaring. Scaling
+    # every column to unit norm and unscaling the step afterwards costs
+    # nothing and is the difference between converging and not.
+    scale = []
+    Js = matrix(J.rows, J.cols)
+    for j in range(J.cols):
+        c = sqrt(mp.fsum(J[i, j] ** 2 for i in range(J.rows)))
+        scale.append(c if c != 0 else mpf(1))
+        for i in range(J.rows):
+            Js[i, j] = J[i, j] / scale[j]
+
+    kept, Q, R = _mgs(Js, tol if tol is not None else _default_tol())
     m = len(kept)
     if m == 0:
         return [mpf(0)] * J.cols
@@ -91,5 +105,5 @@ def lstsq_step(J, F, tol=None):
 
     step = [mpf(0)] * J.cols
     for a, j in enumerate(kept):
-        step[j] = x[a]
+        step[j] = x[a] / scale[j]          # undo the equilibration
     return step
