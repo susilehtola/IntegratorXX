@@ -2,6 +2,7 @@
 
 #include <integratorxx/quadrature.hpp>
 #include <vector>
+#include <cmath>
 
 namespace IntegratorXX {
 

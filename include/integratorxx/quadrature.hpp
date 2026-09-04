@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cassert>
+#include <utility>
 #include <integratorxx/type_traits.hpp>
 
 namespace IntegratorXX {

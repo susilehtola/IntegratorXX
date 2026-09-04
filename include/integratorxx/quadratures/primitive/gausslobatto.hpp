@@ -3,6 +3,10 @@
 #include <integratorxx/quadrature.hpp>
 #include <integratorxx/util/legendre.hpp>
 #include <vector>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <tuple>
 
 namespace IntegratorXX {
 
@@ -47,7 +51,7 @@ struct quadrature_traits<GaussLobatto<PointType, WeightType>> {
     for(size_t idx = 1; idx < mid; ++idx) {
       // Initial guess
       const point_type i = static_cast<point_type>(npts - 1 - idx);
-      point_type z = cos (i * M_PI / ( npts - 1.0));
+      point_type z = std::cos(i * M_PI / (npts - 1.0));
 
       // Old value of root
       point_type z_old = -2.0;

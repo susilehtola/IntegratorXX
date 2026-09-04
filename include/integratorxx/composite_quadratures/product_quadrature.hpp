@@ -1,6 +1,8 @@
 #pragma once
 
 #include <integratorxx/quadrature.hpp>
+#include <memory>
+#include <vector>
 
 namespace IntegratorXX {
 
