@@ -87,10 +87,10 @@ public:
     using index_range_type = std::pair<size_t,size_t>;
     using quad_type        = Quadrature<AngularQuad>;
     using value_type = std::pair<index_range_type, quad_type>;
-    using difference_type = size_t; 
-    using pointer           = value_type*;
-    using reference         = value_type&;
-    using iterator_catagory = std::input_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using pointer           = void;
+    using reference         = value_type;
+    using iterator_category = std::input_iterator_tag;
 
     index_iterator idx_it;
     quad_iterator  quad_it;
@@ -101,21 +101,22 @@ public:
 
     rgp_iterator& operator++(){ idx_it++; quad_it++; return *this; }
     rgp_iterator  operator++(int) {
-      iterator retval = *this;
+      rgp_iterator retval = *this;
       ++(*this);
       return retval;
     }
 
-    rgp_iterator& operator+(int i) {
-      idx_it  += i;
-      quad_it += i;
-      return (*this);
+    rgp_iterator operator+(difference_type i) const {
+      rgp_iterator copy = *this;
+      copy.idx_it  += i;
+      copy.quad_it += i;
+      return copy;
     }
 
-    bool operator==(rgp_iterator other) const { 
+    bool operator==(const rgp_iterator& other) const { 
       return idx_it == other.idx_it && quad_it == other.quad_it; 
     }
-    bool operator!=(rgp_iterator other) const { return !(*this == other);   }
+    bool operator!=(const rgp_iterator& other) const { return !(*this == other);   }
 
     value_type operator*() {
       return std::make_pair( std::make_pair(*idx_it, *(idx_it+1)), *quad_it );
